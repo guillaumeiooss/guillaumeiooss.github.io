@@ -1,0 +1,116 @@
+*** ********************************************************************
+*** *                Documentation Monoparametric Tiling               *
+*** ********************************************************************
+
+*** Overview ***
+
+This standalone library contains the implementation of the monoparametric tiling transformation (also called Constant Aspect Ratio Tiling) on polyhedra and affine functions, as described in [Iooss2014impact]. The implementation is in C++ and manipulates polyhedron and affine function in their matricial representation (using the Polylib format).
+
+We perform a rectangular tiling whose ratios are multiple of the same program parameter. This means that a 2-dimensional rectangular tiling of size 2b*b is allowed (where b is a program parameter whose value is known only after compilation and right before the execution of the program). In such a tiling, b is called the block size parameter. A rectangular tiling of size b*c is forbidden (where b and c are program parameters).
+
+
+When applying this transformation on a n-dimensional polyhedron D = {\vec{i} | ... }, we obtain a union of 2n-dimensional polyhedra \Delta = {\vec{i_b}, \vec{i_l} | ... } such that:
+	* \vec{i_b} is called the blocked indices and identify a tile
+	* \vec{i_l} is called the local indices and identify a point inside a tile
+	(for example, for a 2b*b rectangular tiling, we will have (i1, i2) = (2b. i1_b + i1_l, b.i2_b + i2_l), where 0<=i1_l<2b and 0<=i2_l<b)
+
+	* No constraint in \Delta involves both the blocked and the local indices at the same time.
+	* Each polyhedra of the union \Delta corresponds to a different shape of tile (the constraints on the local indices describing the shape of the tile and the constraints on the block indices when the shape occurs)
+	* For each tile \vec{i_b}, there is at most one polyhedron of the union \Delta which contributes to this tile.
+
+For example, if we consider a triangle {i,j | 0<=i<=j<N} where N = Nb*b, after tiling it with a b*b square tiles, we obtain a union of two polyhedra:
+	* One corresponding to the diagonal tiles (having a diagonal shapes): {i_b,j_b, i_l,j_l | 0<=i_b=j_b<N_b && 0<=i_l<=j_l<b }
+	* One corresponding to the full tiles: {i_b, j_b, i_l,j_l | 0<=i_b<j_b<N_b && 0<=i_l<b && 0<=j_l<b }
+
+
+About affine functions, we have to consider that we have two spaces: one for the input of the function and one for the output of the function. Both spaces can have a different tiling. The result of the monoparametric tiling transformation on an affine function is a piecewise affine function, which might admit some modulo conditions (conditions of the form "i mod M = C" where M and C are constants). This piecewise affine function does not have any modulo condition is a necessary and sufficient condition involving the tiling of the input and output spaces is satisfied.
+
+This current implementation check if this necessary and sufficient condition is satisfied and output the resulting piecewise affine function. If the original affine function (f) is a n-dimensional to m-dimensional affine function, then the piecewise affine function (\phi) will be a 2n-dimensional to 2m-dimensional function. It also have the following properties:
+	* Every branch of \phi has a different value than the rest of the branches. Thus, it is not possible to simplify the resulting expression
+	* The constraints associated to each branch of \phi do not involve both blocked and local indices of the input space at the same time.
+
+
+These two transformations are the main building block in order to perform a monoparametric tiling transformation on a program. More details can be found in [Iooss2016PhD].
+
+
+
+*** Main functions and input format ***
+
+The 2 main operations are in CART.h:
+	- getTiledDomain (to tile a polyhedron)
+	- getTiledFunction (to tile an affine function)
+
+
+A polyhedron is represented as in Polylib. A polyhedron is represented as the matrix of its constraints, where:
+	- Each row corresponds to a contraint
+	- The first column of each row encodes if the constraint is an equality or an inequality (0=equality, 1=inequality). We currently assume that there is only inequalities (equality constraints can be converted to inequality constraints).
+	- The next few columns correspond to the indices of the polyhedron
+	- The next few columns correspond to the parameters of the polyhedron
+	- The last column contain to the constant coefficient of the constraints.
+
+For example, if a row of such matrix is [1 1 -1 0 1], for a 2D polyhedron with only one parameter called N, this row corresponds to the constraint "i - j + 1 >= 0".
+
+
+An affine function is represented as the matrix of its values, where the first columns correspond to the indices of the function, then next columns correspond to the parameters and the last column corresponds to the constant.
+
+
+The parameters of the monoparametric tiling operation on polyhedron are the following:
+	- "vector<vector<long> > &polyScalar", "int nParam" and "int nInd" describes the input polyhedron (with its number of parameters and indices)
+	- "vector<int> &scale" describes the ratio of the tiling (for example, for a 2b*b rectangular tiling, scale=[2 1])
+	- "bool areParamDiv" is an option which specifies that the parameters of the program (N,M, ...) are multiple of the block size parameter b.
+	- "int minBlSizeParam" is an option which allows us to specify the minimal value of the block size parameter b.
+
+In addition, in "getTiledDomain_scheduled", we can specify an unimodular matrix "vector<vector<long> > unimodmatrix" which allows us to specify hyperplanes of tiling as an extension from rectangular tiling.
+
+The result of this transformation is a "list<list<vector<vector<long> > > >", which is an intersection (first "list") of union (second "list") of polyhedra in Polylib format.
+
+
+The parameters of the monoparametric tiling operation on affine function are the following:
+	- "vector<vector<long> > &affScalar", "int nInd", "int nParam" describes the input affine function (with its number of parameters and indices)
+	- "vector<int> &scale" describes the ratio of the tiling for the input space
+	- "vector<int> &scaleIm" describes the ratio of the tiling for the output space
+	- "bool areParamDiv" is an option which specifies that the parameters of the program (N,M, ...) are multiple of the block size parameter b.
+	- "int minBlSizeParam" is an option which allows us to specify the minimal value of the block size parameter b.
+
+
+
+In addition, there is an option on the way the operation are performed called "changekMinMaxOption", which is, by default, disabled. By enabeling this option (= setting it to 1), we can reduce the number of potentially empty polyhedra returned in the union \Delta and potentially unsatisfiable branches of the piecewise affine function \phi. However, the result will be valid only if the block size parameter "b" is "big enough".
+
+
+
+*** References ***
+
+@inproceedings{Iooss2014impact,
+	author = {Iooss, Guillaume and Rajopadhye, Sanjay and
+		Alias, Christophe and Zou, Yun},
+	title = {Constant Aspect Ratio Tiling},
+	booktitle = {Proceedings of the 
+	    4th International Workshop on Polyhedral Compilation Techniques},
+	editor = {Rajopadhye, Sanjay and Verdoolaege, Sven},
+	year   = 2014,
+	month  = Jan,
+	address = {Vienna, Austria}
+}
+
+@phdthesis{Iooss2016PhD,
+  TITLE = {Detection of Linear Algebra Operations in Polyhedral Programs},
+  AUTHOR = {Iooss, Guillaume},
+  URL = {https://tel.archives-ouvertes.fr/tel-01370553},
+  NUMBER = {2016LYSEN019},
+  SCHOOL = {Universit{\'e} de Lyon},
+  YEAR = {2016},
+  MONTH = Jul,
+  KEYWORDS = {Polyhedral model ; Tiling ; Program equivalence ; Template recognition ; BLAS ; Mod{\`e}le poly{\'e}drique ; Tuilage ; {\'E}quivalence de programme ; Reconnaissance de template},
+  TYPE = {Theses},
+  PDF = {https://tel.archives-ouvertes.fr/tel-01370553/file/IOOSS_Guillaume_2016LYSEN019_These.pdf},
+  HAL_ID = {tel-01370553},
+  HAL_VERSION = {v1},
+}
+
+
+*** Contact ***
+
+In case of bug/question, feel free to contact me at: guillaume [dot] iooss [at] gmail.com
+
+Copyright (c) 2016, Guillaume Iooss, CSU, ENS-Lyon, Inria. All rights reserved
+
